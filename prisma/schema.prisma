@@ -1,0 +1,152 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+}
+
+enum SpaceType {
+  DESK
+  PARKING
+  MEETING
+  PHONE
+}
+
+enum ReservationStatus {
+  RESERVED
+  OCCUPIED
+  CANCELLED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+model User {
+  id                 String                @id @default(cuid())
+  name               String
+  email              String                @unique
+  role               Role
+  avatarColor        String?
+  reservations       Reservation[]
+  ownerships         Space[]               @relation("SpaceOwner")
+  managedLocations   LocationAdmin[]
+  occupancyRequests  OccupancyRequest[]    @relation("OccupancyRequestsByUser")
+  handledRequests    OccupancyRequest[]    @relation("OccupancyRequestsHandled")
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+}
+
+model Location {
+  id          String           @id @default(cuid())
+  name        String
+  slug        String           @unique
+  timezone    String           @default("UTC")
+  address     String?
+  description String?
+  spaces      Space[]
+  admins      LocationAdmin[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model LocationAdmin {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  locationId  String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, locationId])
+}
+
+model Space {
+  id               String             @id @default(cuid())
+  name             String
+  code             String?
+  type             SpaceType
+  description      String?
+  capacity         Int                @default(1)
+  location         Location           @relation(fields: [locationId], references: [id])
+  locationId       String
+  floor            Int?
+  gridX            Int?
+  gridY            Int?
+  color            String?            @default("#0ea5e9")
+  hasFixedOwner    Boolean            @default(false)
+  owner            User?              @relation("SpaceOwner", fields: [ownerId], references: [id])
+  ownerId          String?
+  openingWindows   OpeningWindow[]
+  reservations     Reservation[]
+  occupancyRequests OccupancyRequest[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([locationId])
+  @@index([ownerId])
+}
+
+model OpeningWindow {
+  id        String   @id @default(cuid())
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  spaceId   String
+  dayOfWeek Int      // 0 = Sunday, 6 = Saturday
+  startTime String   // HH:mm format
+  endTime   String   // HH:mm format
+  createdAt DateTime @default(now())
+
+  @@index([spaceId, dayOfWeek])
+}
+
+model Reservation {
+  id        String             @id @default(cuid())
+  space     Space              @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  spaceId   String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  start     DateTime
+  end       DateTime
+  status    ReservationStatus  @default(RESERVED)
+  notes     String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([spaceId])
+  @@index([userId])
+  @@index([start, end])
+}
+
+model OccupancyRequest {
+  id           String         @id @default(cuid())
+  space        Space          @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  spaceId      String
+  requester    User           @relation("OccupancyRequestsByUser", fields: [requesterId], references: [id], onDelete: Cascade)
+  requesterId  String
+  start        DateTime
+  end          DateTime
+  status       RequestStatus  @default(PENDING)
+  handledBy    User?          @relation("OccupancyRequestsHandled", fields: [handledById], references: [id])
+  handledById  String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  decisionNote String?
+
+  @@index([spaceId])
+  @@index([requesterId])
+  @@index([handledById])
+  @@index([status])
+}
